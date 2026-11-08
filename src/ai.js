@@ -1,5 +1,5 @@
 // 내 구독 계정으로 AI 쓰기. 사용자가 로그인해 둔 공식 프로그램(Claude Code, Codex, Gemini는 Google의 Antigravity CLI)을 이 PC에서 실행한다.
-// 이 앱의 일정·할 일 MCP 서버가 준비되면(setLaunch) 그 도구를 붙여 준다 — 2단계(구글 연동)부터. 그 전에는 도구 없이 답만 한다.
+// 이 앱의 일정·할 일 MCP 서버(src/mcp-server.js)를 붙여 준다 (main.js가 setLaunch로 띄우는 방법을 알려 줌).
 // 이 앱은 로그인 정보를 읽거나 저장하지 않는다. (MyCollaboratorBots의 src/ai.js를 그대로 가져옴 — 고칠 때 두 앱을 함께 본다)
 
 const fs = require("fs");
@@ -9,7 +9,7 @@ const { spawn, execFile } = require("child_process");
 const agy = require("./agy");
 
 const SERVER_NAME = "myplanner";
-const TOOL_NAMES = ["list_events", "find_free_time", "create_event", "update_event", "delete_event", "list_tasks", "create_task", "update_task", "complete_task"];
+const { TOOL_NAMES } = require("./tools");
 const home = os.homedir();
 const isWin = process.platform === "win32";
 

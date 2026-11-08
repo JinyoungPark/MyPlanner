@@ -120,7 +120,30 @@ dialog form { display: flex; flex-direction: column; max-height: 88vh; }
 .composer textarea { flex: 1; min-height: 40px; max-height: 160px; resize: vertical; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); padding: 8px 10px; }
 .composer select { height: 34px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); padding: 0 8px; }
 .empty { color: var(--muted); font-size: 13px; line-height: 1.7; padding: 8px 2px; }
-@media (max-width: 760px) { .home { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); } .today ol { display: none; } }
+.today { display: flex; flex-direction: column; overflow-y: auto; }
+.today .sub { display: flex; align-items: center; gap: 6px; margin: 12px 0 4px; font-size: 12.5px; color: var(--muted); font-weight: 600; }
+.today .sub:first-of-type { margin-top: 4px; }
+.ev { display: flex; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.ev .t { color: var(--muted); width: 82px; flex: none; font-variant-numeric: tabular-nums; }
+.ev .dot { width: 4px; border-radius: 2px; flex: none; background: var(--accent); }
+.ev.past { opacity: .55; }
+.ev small { display: block; color: var(--muted); }
+.tk { display: flex; gap: 8px; align-items: flex-start; padding: 5px 0; font-size: 13px; }
+.tk input { margin-top: 3px; }
+.tk small { color: var(--muted); margin-left: 4px; }
+.tk small.late { color: var(--warn); }
+.addtask { display: flex; gap: 6px; margin-top: 8px; }
+.addtask input { flex: 1; height: 32px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); padding: 0 9px; }
+.acts { display: flex; flex-direction: column; gap: 8px; margin-bottom: 6px; }
+.act { border: 1px solid var(--accent); background: var(--accent-soft); border-radius: 10px; padding: 9px 12px; font-size: 13px; display: flex; gap: 10px; align-items: center; }
+.act > div { flex: 1; }
+.act small { display: block; color: var(--muted); margin-top: 2px; }
+.tooluse { color: var(--muted); font-size: 12px; margin: 2px 0; }
+.cal-pick label { display: flex; gap: 6px; align-items: center; font-size: 13px; padding: 3px 0; }
+.cal-pick .sw { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.log-row { font-size: 12.5px; padding: 5px 0; border-bottom: 1px solid var(--line); }
+.log-row small { color: var(--muted); }
+@media (max-width: 760px) { .home { grid-template-columns: 1fr; grid-template-rows: minmax(0, 40%) minmax(0, 1fr); } }
 </style>
 <body>
 <div class="app">
@@ -135,23 +158,15 @@ dialog form { display: flex; flex-direction: column; max-height: 88vh; }
   <main>
     <div class="home">
       <section class="card today">
-        <h2>오늘</h2>
-        <p class="help">일정·할 일은 다음 단계에서 연결합니다. 지금은 개인 구독 AI 연결과 업데이트를 갖춘 앱 기반입니다.</p>
-        <ol>
-          <li class="now">앱 기반 — AI 구독 계정 연결 · 업데이트</li>
-          <li>구글 캘린더 · Google Tasks</li>
-          <li>Outlook 일정 · Microsoft To Do</li>
-          <li>할 일 한곳에 모으기</li>
-          <li>자동화 (브리핑 · 알림)</li>
-          <li>기기 동기화 · Android</li>
-        </ol>
+        <div class="row-add" style="align-items:center"><h2 style="flex:1;margin:0" id="todayTitle">오늘</h2><button class="link" type="button" id="btnRefresh">새로 고침</button></div>
+        <div id="todayBody"><p class="help">불러오는 중…</p></div>
       </section>
       <section class="card askbox">
         <h2>AI에게 묻기 <small class="help" style="font-weight:400">— 내 구독 계정으로 연결된 AI가 답합니다</small></h2>
-        <div class="thread" id="thread"></div>
+        <div class="thread" id="thread"><div class="acts" id="acts"></div><div id="asks"></div></div>
         <div class="composer">
           <select id="askProvider" title="답할 AI"></select>
-          <textarea id="askText" placeholder="예: 이번 주 할 일을 우선순위로 정리하는 방법을 알려 줘  (Enter 보내기 · Shift+Enter 줄바꿈)"></textarea>
+          <textarea id="askText" placeholder="예: 내일 오후에 1시간 비는 시간 찾아서 ‘보고서 검토’ 잡아 줘  (Enter 보내기 · Shift+Enter 줄바꿈)"></textarea>
           <button class="primary" type="button" id="btnAsk">보내기</button>
         </div>
       </section>
@@ -164,6 +179,8 @@ dialog form { display: flex; flex-direction: column; max-height: 88vh; }
   <div class="set-wrap">
     <nav class="set-nav" id="setNav">
       <button type="button" data-sec="ai" class="on">AI 연결</button>
+      <button type="button" data-sec="cal">캘린더 연결</button>
+      <button type="button" data-sec="log">승인 기록</button>
       <button type="button" data-sec="about">정보 · 업데이트</button>
     </nav>
     <div class="set-body">
@@ -173,10 +190,35 @@ dialog form { display: flex; flex-direction: column; max-height: 88vh; }
           로그인은 이 PC의 다른 프로그램(MyDocSearch · MyCollaboratorBots 등)과 함께 씁니다.</p>
         <div id="aiRows"><p class="help">불러오는 중…</p></div>
       </section>
+      <section data-sec="cal">
+        <h3>구글 캘린더 · Google Tasks</h3>
+        <div id="gRow"></div>
+        <div id="gPrefs"></div>
+        <details style="margin-top:12px"><summary class="help" style="cursor:pointer">OAuth 클라이언트 (처음 한 번)</summary>
+          <p class="help">구글 로그인에는 내 Google Cloud 프로젝트의 OAuth 클라이언트가 필요합니다.
+            ① <a href="https://console.cloud.google.com/apis/library/calendar-json.googleapis.com" target="_blank" rel="noopener">Google Calendar API</a>와
+            <a href="https://console.cloud.google.com/apis/library/tasks.googleapis.com" target="_blank" rel="noopener">Google Tasks API</a>를 켭니다.
+            ② <a href="https://console.cloud.google.com/auth/clients" target="_blank" rel="noopener">클라이언트 만들기</a>에서 유형 ‘데스크톱 앱’을 고릅니다.
+            ③ 대상(테스트 사용자)에 내 구글 계정을 넣습니다. ④ 받은 클라이언트 ID와 보안 비밀을 아래에 넣습니다.
+            보안 비밀은 이 PC의 보안 저장소로 암호화해 둡니다.</p>
+          <label class="fld">클라이언트 ID<input id="gClientId" placeholder="….apps.googleusercontent.com"></label>
+          <label class="fld">클라이언트 보안 비밀<input id="gSecret" type="password" placeholder="GOCSPX-… (이미 넣었으면 비워 두세요)"></label>
+          <button class="ghost" type="button" id="btnGClient">저장</button>
+        </details>
+        <h3>외부 AI 앱에서 쓰기</h3>
+        <p class="help">Claude 데스크톱·Claude Code·Codex 같은 AI 앱의 MCP 서버 설정에 아래를 넣으면, 그 앱에서도 같은 일정·할 일 도구를 씁니다. 이 앱이 켜져 있어야 하고, 바꾸는 일은 이 앱에서 승인합니다.</p>
+        <pre id="gLaunch" style="font-size:11.5px;white-space:pre-wrap;word-break:break-all"></pre>
+        <button class="ghost" type="button" id="btnCopyLaunch">복사</button>
+      </section>
+      <section data-sec="log">
+        <h3>AI가 바꾸려던 일</h3>
+        <p class="help">AI가 일정·할 일을 만들거나 바꾸거나 지우려 하면 승인 카드가 뜨고, 승인·거절·결과가 여기에 남습니다.</p>
+        <div id="actLog"></div>
+      </section>
       <section data-sec="about">
         <h3>버전</h3>
         <div class="row-add" style="align-items:center"><span class="help" id="updState" style="flex:1;margin:0">새 버전 확인 중…</span><button class="ghost" type="button" id="btnUpdate">새 버전 확인</button></div>
-        <p class="help">켤 때와 12시간마다 GitHub 릴리스의 최신 번호만 확인합니다 (보내는 정보 없음). 새 버전은 알려 드리고, 누르셔야 설치합니다. 윈도우 zip판은 ‘지금 업데이트’로 앱이 받아 바꿔 끼우고, 문제가 생기면 이전 버전으로 되돌립니다. 묻기 기록·설정은 그대로입니다.
+        <p class="help">켤 때와 12시간마다 GitHub 릴리스의 최신 번호만 확인합니다 (보내는 정보 없음). 새 버전은 알려 드리고, 누르셔야 설치합니다. 윈도우 zip판은 ‘지금 업데이트’로 앱이 받아 바꿔 끼우고, 문제가 생기면 이전 버전으로 되돌립니다. 묻기·승인 기록·구글 연결·설정은 그대로입니다.
           <a href="#" id="lnkReleases">릴리스 페이지</a></p>
         <h3>정보</h3>
         <div class="kv" id="aboutKv"></div>
@@ -258,6 +300,8 @@ function setSection(sec) {
   $("setNav").querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.sec === sec));
   document.querySelectorAll(".set-body section").forEach((s) => s.classList.toggle("on", s.dataset.sec === sec));
   if (sec === "ai") loadAi();
+  if (sec === "cal") renderGoogle();
+  if (sec === "log") renderLog();
   if (sec === "about") renderAbout();
 }
 function openSettings(sec = "ai") { $("setDlg").showModal(); setSection(sec); }
@@ -436,18 +480,21 @@ function renderProviders(ready) {
   sel.innerHTML = Object.entries(PNAME).map(([k, n]) => `<option value="${k}"${ready.includes(k) ? "" : " disabled"}>${n}${ready.includes(k) ? "" : " (연결 필요)"}</option>`).join("");
   sel.value = ready.includes(cur) ? cur : ready[0] || cur;
 }
+const TOOL_KO = { list_events: "일정 보는 중", find_free_time: "빈 시간 찾는 중", create_event: "일정 만들기", update_event: "일정 바꾸기", delete_event: "일정 지우기",
+  list_tasks: "할 일 보는 중", create_task: "할 일 만들기", update_task: "할 일 바꾸기", complete_task: "할 일 끝내기" };
 function askHtml(a) {
   const meta = [a.model || PNAME[a.provider], a.seconds != null ? `${a.seconds}초` : ""].filter(Boolean).join(" · ");
   const ans = a.error && !a.answer ? `<div class="a err">${esc(a.error)}</div>`
     : `<div class="a">${md(a.answer) || '<span class="help">답을 기다리는 중…</span>'}${a.answer ? `<div class="meta">${esc(meta)}</div>` : ""}</div>`;
-  return `<div class="q">${esc(a.question)}</div>${ans}`;
+  const used = (a.tools || []).map((n) => `<div class="tooluse">🔧 ${esc(TOOL_KO[n] || n)}</div>`).join("");
+  return `<div class="q">${esc(a.question)}</div>${used}${ans}`;
 }
 function renderThread() {
   const t = $("thread");
-  t.innerHTML = home.asks.length ? home.asks.map(askHtml).join("") +
+  $("asks").innerHTML = home.asks.length ? home.asks.map(askHtml).join("") +
     `<p style="text-align:right;margin:4px 0"><button class="link" type="button" id="btnClear">기록 지우기</button></p>`
-    : `<div class="empty">아직 물어본 것이 없습니다.<br>설정 → AI 연결에서 Claude · ChatGPT · Gemini 중 하나로 로그인한 뒤 물어보세요.<br>
-      일정·할 일을 읽고 바꾸는 일은 다음 단계에서 캘린더를 연결하면 할 수 있습니다.</div>`;
+    : `<div class="empty">아직 물어본 것이 없습니다.<br>AI는 설정 → AI 연결에서 로그인한 Claude · ChatGPT · Gemini 중 하나가 답합니다.<br>
+      구글 캘린더를 연결해 두면(설정 → 캘린더 연결) AI가 일정·할 일을 보고, 바꾸는 일은 승인을 받아 합니다.</div>`;
   t.scrollTop = t.scrollHeight;
   if ($("btnClear")) $("btnClear").onclick = async () => { if (!confirm("묻기 기록을 모두 지울까요?")) return; const r = await api("/api/ask/clear"); if (!r.ok) alert(r.message); loadHome(); };
   $("btnAsk").textContent = home.live ? "멈추기" : "보내기";
@@ -464,7 +511,8 @@ window.mpl.onAsk((ev) => {
   if (!a) return;
   if (ev.type === "reset") a.answer = "";
   else if (ev.type === "delta") a.answer += ev.text;
-  else if (ev.type === "done") { a.answer = ev.text || a.answer; a.error = ev.error || ""; a.seconds = ev.seconds; a.model = ev.model || a.model; home.live = null; }
+  else if (ev.type === "tool") (a.tools ||= []).push(ev.name);
+  else if (ev.type === "done") { a.answer = ev.text || a.answer; a.error = ev.error || ""; a.seconds = ev.seconds; a.model = ev.model || a.model; home.live = null; loadToday(); }
   renderThread();
 });
 async function sendAsk() {
@@ -481,8 +529,124 @@ async function sendAsk() {
 $("btnAsk").onclick = sendAsk;
 $("askText").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendAsk(); } });
 
+// ---------- 오늘: 일정 · 할 일 ----------
+const pad2 = (n) => String(n).padStart(2, "0");
+const hm = (iso) => { const d = new Date(iso); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`; };
+const todayKey = () => { const d = new Date(); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; };
+async function loadToday() {
+  const d = await api("/api/today");
+  const now = new Date();
+  $("todayTitle").textContent = `오늘 · ${now.getMonth() + 1}월 ${now.getDate()}일 (${"일월화수목금토"[now.getDay()]})`;
+  const body = $("todayBody");
+  if (!d.connected) {
+    body.innerHTML = `<p class="help">구글 캘린더 · Google Tasks를 연결하면 오늘 일정과 할 일이 여기에 보입니다.</p>
+      <button class="primary" type="button" id="btnGoCal">캘린더 연결하기</button>`;
+    $("btnGoCal").onclick = () => openSettings("cal");
+    return;
+  }
+  const evs = d.events.map((e) => `<div class="ev${!e.allDay && new Date(e.end) < now ? " past" : ""}"><span class="dot" style="${e.color ? `background:${esc(e.color)}` : ""}"></span>
+    <span class="t">${e.allDay ? "하루 종일" : `${hm(e.start)}–${hm(e.end)}`}</span><span>${e.link ? `<a href="${esc(e.link)}" target="_blank" rel="noopener">${esc(e.title)}</a>` : esc(e.title)}${e.location ? `<small>${esc(e.location)}</small>` : ""}</span></div>`).join("");
+  const tks = d.tasks.map((t) => `<label class="tk"><input type="checkbox" data-task="${esc(t.id)}" data-list="${esc(t.listId)}"${t.done ? " checked" : ""}><span>${esc(t.title)}${t.due ? `<small class="${t.due < todayKey() ? "late" : ""}">${t.due === todayKey() ? "오늘" : t.due.slice(5).replace("-", "/")}</small>` : ""}</span></label>`).join("");
+  body.innerHTML = `<div class="sub">📅 일정 ${d.events.length}</div>${d.eventsError ? `<p class="help" style="color:var(--warn)">${esc(d.eventsError)}</p>` : evs || '<p class="help">오늘은 일정이 없습니다.</p>'}
+    <div class="sub">✅ 할 일 ${d.tasks.length}</div>${d.tasksError ? `<p class="help" style="color:var(--warn)">${esc(d.tasksError)}</p>` : tks || '<p class="help">남은 할 일이 없습니다.</p>'}
+    <form class="addtask" id="addTask"><input id="newTask" placeholder="할 일 추가 (Enter)"></form>`;
+  body.querySelectorAll("[data-task]").forEach((c) => c.onchange = async () => {
+    c.disabled = true;
+    const r = await api("/api/tasks/done", { id: c.dataset.task, list: c.dataset.list, done: c.checked });
+    if (!r.ok) { alert(r.message); c.checked = !c.checked; }
+    setTimeout(loadToday, 600);
+  });
+  $("addTask").onsubmit = async (e) => {
+    e.preventDefault();
+    const title = $("newTask").value.trim();
+    if (!title) return;
+    $("newTask").disabled = true;
+    const r = await api("/api/tasks/add", { title });
+    if (!r.ok) { alert(r.message); $("newTask").disabled = false; return; }
+    loadToday();
+  };
+}
+$("btnRefresh").onclick = loadToday;
+
+// ---------- 승인 카드 ----------
+const SRC = (s) => s || "AI";
+async function renderActs() {
+  const { pending } = await api("/api/actions");
+  $("acts").innerHTML = pending.map((a) => `<div class="act"><div><b>${esc(a.summary)}</b><small>${esc(SRC(a.source))}이(가) 요청 · 승인하면 바로 반영됩니다</small></div>
+    <button class="primary" type="button" data-ok="${a.id}">승인</button><button class="ghost" type="button" data-no="${a.id}">거절</button></div>`).join("");
+  $("acts").querySelectorAll("[data-ok],[data-no]").forEach((b) => b.onclick = async () => {
+    b.parentElement.querySelectorAll("button").forEach((x) => x.disabled = true);
+    const r = await api("/api/actions/decide", { id: Number(b.dataset.ok || b.dataset.no), ok: !!b.dataset.ok });
+    if (!r.ok) alert(r.message);
+    renderActs();
+  });
+  if (pending.length) $("thread").scrollTop = 0;
+}
+window.mpl.onAction((ev) => {
+  renderActs();
+  if (ev.type === "decided" && /done|failed/.test(ev.action.status)) loadToday();
+  if ($("setDlg").open && document.querySelector('.set-body section[data-sec="log"].on')) renderLog();
+});
+const ST = { pending: "승인 대기", approved: "승인 · 실행 중", denied: "거절", expired: "기한 지남", done: "실행함", failed: "실패" };
+async function renderLog() {
+  const { recent } = await api("/api/actions");
+  $("actLog").innerHTML = recent.map((a) => `<div class="log-row"><b>${esc(ST[a.status] || a.status)}</b> · ${esc(a.summary)}
+    <br><small>${new Date(a.ts * 1000).toLocaleString("ko-KR")} · ${esc(SRC(a.source))}${a.status === "failed" ? ` · ${esc(a.result)}` : ""}</small></div>`).join("") || '<p class="help">아직 없습니다.</p>';
+}
+
+// ---------- 설정: 캘린더 연결 ----------
+let gSigning = false;
+async function renderGoogle() {
+  const g = await api("/api/google/status");
+  $("gClientId").value = g.clientId || "";
+  $("gLaunch").textContent = JSON.stringify({ mcpServers: { myplanner: g.launch } }, null, 2);
+  let state, btn;
+  if (gSigning) { state = `<span class="wait">브라우저에서 구글 로그인을 마치세요…</span>`; btn = `<button class="ghost" type="button" id="btnGCancel">취소</button>`; }
+  else if (g.connected) { state = `<span class="ok">연결됨</span> · ${esc(g.email)}`; btn = `<button class="ghost" type="button" id="btnGOut">연결 끊기</button>`; }
+  else if (g.configured) { state = `<span class="no">로그인 필요</span>`; btn = `<button class="primary" type="button" id="btnGIn">Google로 로그인</button>`; }
+  else { state = `<span class="no">OAuth 클라이언트 필요</span>`; btn = ""; }
+  $("gRow").innerHTML = `<div class="ai-row"><div><b>Google</b> · ${state}<small>일정 읽기·쓰기, 캘린더 목록, 할 일(Google Tasks)을 씁니다. 로그인 정보는 이 PC의 보안 저장소에 암호화해 둡니다.</small>
+    ${!g.configured ? `<small>아래 ‘OAuth 클라이언트’를 먼저 넣으세요.</small>` : ""}</div><div class="btns">${btn}</div></div>`;
+  if (!g.configured) document.querySelector('#setDlg details').open = true;
+  const on = (id, fn) => { const b = $(id); if (b) b.onclick = fn; };
+  on("btnGIn", async () => {
+    gSigning = true; renderGoogle();
+    const r = await api("/api/google/signin");
+    gSigning = false; renderGoogle(); loadToday();
+    if (!r.ok) alert(`구글 로그인 실패\n\n${r.message}`);
+    else if (r.missing && r.missing.length) alert("로그인했지만 일부 권한에 동의하지 않았습니다. 다시 로그인해 모든 항목을 허용하세요.");
+    else toast(`구글 계정 ${r.email}을 연결했습니다.`);
+  });
+  on("btnGCancel", () => api("/api/google/signin-cancel"));
+  on("btnGOut", async () => {
+    if (!confirm("구글 연결을 끊을까요?\n\n이 앱의 구글 로그인을 지우고 구글에도 권한 해제를 요청합니다. 캘린더의 일정·할 일은 그대로입니다.")) return;
+    await api("/api/google/signout"); renderGoogle(); loadToday();
+  });
+  $("gPrefs").innerHTML = "";
+  if (!g.connected) return;
+  const l = await api("/api/google/lists");
+  if (!l.ok) { $("gPrefs").innerHTML = `<p class="help" style="color:var(--warn)">${esc(l.message)}</p>`; return; }
+  const chosen = l.chosen.calendars && l.chosen.calendars.length ? l.chosen.calendars : l.calendars.filter((c) => c.primary).map((c) => c.id);
+  $("gPrefs").innerHTML = `<h3>보일 캘린더</h3><div class="cal-pick">${l.calendars.map((c) => `<label><input type="checkbox" value="${esc(c.id)}"${chosen.includes(c.id) ? " checked" : ""}>
+      <span class="sw" style="background:${esc(c.color || "var(--accent)")}"></span>${esc(c.name)}${c.primary ? " (기본)" : ""}${c.writable ? "" : ' <small class="help">보기만</small>'}</label>`).join("")}</div>
+    <label class="fld" style="max-width:280px">할 일 목록<select id="gTaskList">${l.taskLists.map((t) => `<option value="${esc(t.id)}"${t.id === l.chosen.taskList ? " selected" : ""}>${esc(t.name)}</option>`).join("")}</select></label>`;
+  $("gPrefs").querySelectorAll(".cal-pick input").forEach((c) => c.onchange = async () => {
+    await api("/api/google/prefs", { calendars: [...$("gPrefs").querySelectorAll(".cal-pick input:checked")].map((x) => x.value) }); loadToday();
+  });
+  $("gTaskList").onchange = async () => { await api("/api/google/prefs", { taskList: $("gTaskList").value }); loadToday(); };
+}
+$("btnGClient").onclick = async () => {
+  const r = await api("/api/google/client", { clientId: $("gClientId").value, secret: $("gSecret").value });
+  if (!r.ok) return alert(r.message);
+  $("gSecret").value = ""; toast("OAuth 클라이언트를 저장했습니다."); renderGoogle();
+};
+$("btnCopyLaunch").onclick = async () => { await navigator.clipboard.writeText($("gLaunch").textContent); toast("복사했습니다."); };
+
 loadAi();
 loadHome();
+loadToday();
+renderActs();
+setInterval(loadToday, 5 * 60 * 1000);
 setInterval(loadAi, 10 * 60 * 1000);
 </script>
 </body>

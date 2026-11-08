@@ -1,5 +1,6 @@
-// MyPlanner — Electron 본체. 창을 띄우고, 화면의 요청(AI에게 묻기·AI 연결·업데이트)을 처리한다.
-// 1단계(앱 기반): 개인 구독 AI 연결 · 버전 확인과 업데이트 · 문제 기록. 캘린더·할 일 연동은 2단계부터 이 위에 얹는다.
+// MyPlanner — Electron 본체. 창을 띄우고, 화면의 요청(오늘 일정·할 일 · AI에게 묻기 · 승인 · 연결 · 업데이트)을 처리한다.
+// 1단계(앱 기반): 개인 구독 AI 연결 · 버전 확인과 업데이트 · 문제 기록
+// 2단계(구글 연동): 구글 캘린더 · Google Tasks (src/google.js) · AI 도구(src/tools.js, MCP) · 바꾸는 일은 승인 카드(src/actions.js)
 
 const fs = require("fs");
 const os = require("os");
@@ -8,6 +9,10 @@ const { app, BrowserWindow, ipcMain, shell } = require("electron");
 const store = require("./store");
 const ai = require("./ai");
 const applog = require("./applog");
+const google = require("./google");
+const tools = require("./tools");
+const actions = require("./actions");
+const control = require("./control");
 const updater = require("./updater");
 const version = require("./version");
 
@@ -54,8 +59,8 @@ async function ask(body) {
   asking = { id };
   const cfg = store.loadConfig();
   if (cfg.provider !== provider) store.saveConfig({ ...cfg, provider });
-  ai.runTask(provider, question, { workDir: aiWorkDir(), model, system: ai.SYSTEM_PROMPT,
-    onEvent: (ev) => { if (ev.type === "delta" || ev.type === "reset") send("ask-event", { id, ...ev }); } })
+  ai.runTask(provider, question, { workDir: aiWorkDir(), model, system: systemPrompt(), toolEnv: { MPL_CLIENT: "MyPlanner 묻기" },
+    onEvent: (ev) => { if (ev.type === "delta" || ev.type === "reset" || ev.type === "tool") send("ask-event", { id, ...ev }); } })
     .then((r) => {
       db.prepare("UPDATE asks SET answer = ?, error = ?, seconds = ?, model = CASE WHEN ? <> '' THEN ? ELSE model END WHERE id = ?")
         .run(r.text, r.error, r.seconds ?? null, r.model || "", r.model || "", id);
@@ -65,6 +70,46 @@ async function ask(body) {
     .finally(() => { asking = null; });
   return { ok: true, id };
 }
+// AI가 '오늘·내일'을 알도록 지금 시각과 시간대, 구글 연결 여부를 붙인다
+function systemPrompt() {
+  const d = new Date(), tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const off = -d.getTimezoneOffset(), sign = off >= 0 ? "+" : "-", hh = String(Math.floor(Math.abs(off) / 60)).padStart(2, "0"), mm = String(Math.abs(off) % 60).padStart(2, "0");
+  const g = google.status();
+  return `${ai.SYSTEM_PROMPT}\n지금은 ${d.toLocaleString("ko-KR", { dateStyle: "full", timeStyle: "short" })} (${tz}, UTC${sign}${hh}:${mm})이다.\n` +
+    (g.connected ? `일정·할 일은 myplanner 도구로 본다 (구글 계정 ${g.email}). ${tools.INSTRUCTIONS}`
+      : "구글 캘린더가 아직 연결돼 있지 않다. 일정·할 일을 물으면 설정 → 캘린더 연결에서 구글로 로그인하라고 안내한다.");
+}
+
+// 도구 실행 (이 앱의 묻기와 외부 AI 앱 모두 src/control.js를 거쳐 여기로) — 바꾸는 도구는 승인 카드를 띄우고 기다린다
+async function runTool(name, args, client) {
+  let act = null, ok = false;
+  try {
+    const text = await tools.call(name, args, async (n, a, summary) => {
+      act = actions.request(client, n, a, summary);
+      if (win && !win.isDestroyed()) { if (win.isMinimized()) win.restore(); win.show(); }
+      ok = await act.wait;
+      return ok;
+    });
+    if (act && ok) actions.result(act.id, text);
+    return text;
+  } catch (e) {
+    if (act && ok) actions.result(act.id, e.message || e, true);
+    throw e;
+  }
+}
+
+// 오늘 화면: 오늘 일정 + 끝내지 않은 할 일
+async function today() {
+  const g = google.status();
+  if (!g.connected) return { connected: false, configured: g.configured };
+  const from = new Date(); from.setHours(0, 0, 0, 0);
+  const to = new Date(from.getTime() + 24 * 3600 * 1000);
+  const [events, tasks] = await Promise.allSettled([google.listEvents(from, to), google.listTasks()]);
+  return { connected: true, email: g.email,
+    events: events.status === "fulfilled" ? events.value : [], eventsError: events.status === "rejected" ? String(events.reason.message || events.reason) : "",
+    tasks: tasks.status === "fulfilled" ? tasks.value : [], tasksError: tasks.status === "rejected" ? String(tasks.reason.message || tasks.reason) : "" };
+}
+
 const recentAsks = (n = 20) => db.prepare("SELECT * FROM asks ORDER BY id DESC LIMIT ?").all(n).reverse();
 
 async function handle(url, body) {
@@ -81,6 +126,39 @@ async function handle(url, body) {
       if (asking) return { ok: false, message: "답하는 중에는 지울 수 없습니다." };
       db.exec("DELETE FROM asks");
       return { ok: true };
+
+    // ---------- 오늘 · 할 일 (사용자가 직접 하는 일은 승인 없이) ----------
+    case "/api/today":
+      return today();
+    case "/api/tasks/add":
+      try { return { ok: true, task: await google.createTask({ title: String(body.title || "").trim(), due: body.due || undefined }) }; } catch (e) { return { ok: false, message: e.message }; }
+    case "/api/tasks/done":
+      try { return { ok: true, task: await google.updateTask({ task_id: body.id, list_id: body.list, done: body.done !== false }) }; } catch (e) { return { ok: false, message: e.message }; }
+
+    // ---------- 승인 (src/actions.js) ----------
+    case "/api/actions":
+      return { pending: actions.pending(), recent: actions.recent(30) };
+    case "/api/actions/decide":
+      return actions.decide(body.id, !!body.ok);
+
+    // ---------- 캘린더 연결 (src/google.js) ----------
+    case "/api/google/status":
+      return { ...google.status(), launch: mcpLaunch() };
+    case "/api/google/client":
+      return google.setClient(body.clientId, body.secret);
+    case "/api/google/signin": {
+      const r = await google.signIn((url) => shell.openExternal(url));
+      if (r.ok && win && !win.isDestroyed()) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); }
+      return r;
+    }
+    case "/api/google/signin-cancel":
+      return google.signInCancel();
+    case "/api/google/signout":
+      return google.signOut();
+    case "/api/google/lists":
+      try { return { ok: true, calendars: await google.calendarList(), taskLists: await google.taskLists(), chosen: google.status() }; } catch (e) { return { ok: false, message: e.message }; }
+    case "/api/google/prefs":
+      return google.setPrefs(body);
 
     // ---------- AI 연결 (src/ai.js) ----------
     case "/api/ai/status":
@@ -161,9 +239,14 @@ function diagText() {
   const n = (t) => db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get().n;
   return [
     `${a.name} ${a.version} (데이터 ${a.schema} · Electron ${a.electron}) · ${a.os}`,
-    `묻기 ${n("asks")}건 · 연결 끊은 AI: ${Object.entries(aiOff()).filter(([, v]) => v).map(([k]) => k).join(", ") || "없음"}`,
+    `묻기 ${n("asks")}건 · 승인 기록 ${n("actions")}건 · 구글 ${google.status().connected ? "연결됨" : "연결 안 됨"} · 연결 끊은 AI: ${Object.entries(aiOff()).filter(([, v]) => v).map(([k]) => k).join(", ") || "없음"}`,
     "", `최근 문제 기록 (${a.errors}건):`, applog.tail(60) || "(없음)",
   ].join("\n");
+}
+
+// 일정·할 일 MCP 서버를 띄우는 방법 — 이 앱의 묻기와 외부 AI 앱(설정에 붙여 넣기)이 같이 쓴다
+function mcpLaunch() {
+  return { command: process.execPath, args: [path.join(__dirname, "mcp-server.js")], env: { ELECTRON_RUN_AS_NODE: "1", MPL_DATA: app.getPath("userData") } };
 }
 
 function createWindow() {
@@ -219,6 +302,16 @@ app.whenReady().then(() => {
   ai.setToolsDir(path.join(app.getPath("userData"), "tools"));
   // Gemini(agy)에 브라우저와 같은 프록시를 넘기도록 (회사 프록시·PAC)
   ai.setProxyResolver((url) => require("electron").session.defaultSession.resolveProxy(url));
+  // 구글 토큰은 운영체제 보안 저장소로 암호화 (맥 키체인 · 윈도우 DPAPI)
+  const { safeStorage, net } = require("electron");
+  google.init(app.getPath("userData"), {
+    enc: (t) => (safeStorage.isEncryptionAvailable() ? "s:" + safeStorage.encryptString(t).toString("base64") : "p:" + Buffer.from(t).toString("base64")),
+    dec: (t) => (t.startsWith("s:") ? safeStorage.decryptString(Buffer.from(t.slice(2), "base64")) : Buffer.from(t.slice(2), "base64").toString("utf8")),
+  }, (url, opts) => net.fetch(url, opts));
+  actions.init(db, (ev) => send("action-event", ev));
+  control.start(app.getPath("userData"), runTool);
+  ai.setLaunch(mcpLaunch());
+  try { fs.writeFileSync(path.join(app.getPath("userData"), "mcp-launch.json"), JSON.stringify(mcpLaunch(), null, 2)); } catch (e) { applog.error("main", "mcp-launch.json", e); }
   ipcMain.handle("api", async (_e, url, body) => {
     try { return await handle(url, body || {}); } catch (e) { applog.error("api " + String(url).split("?")[0], e); throw e; }
   });
@@ -226,4 +319,7 @@ app.whenReady().then(() => {
 });
 
 app.on("window-all-closed", () => app.quit());
-app.on("before-quit", () => { try { ai.cancelRuns(); } catch { /* 없음 */ } });
+app.on("before-quit", () => {
+  try { ai.cancelRuns(); } catch { /* 없음 */ }
+  try { actions.cancelAll(); control.stop(); } catch { /* 없음 */ }
+});
