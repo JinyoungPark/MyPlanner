@@ -18,7 +18,7 @@ function connect() {
   const db = new DatabaseSync(path.join(dir, "planner.db"), { timeout: 30000 });
   db.exec("PRAGMA journal_mode=WAL");
   const have = db.prepare("PRAGMA user_version").get().user_version;
-  if (have > SCHEMA_VERSION) throw new Error(`데이터가 더 새 버전(${have})의 것입니다. 앱을 최신 버전으로 업데이트하세요.`);
+  if (have > SCHEMA_VERSION) { db.close(); throw new Error(`데이터가 더 새 버전(${have})의 것입니다. 앱을 최신 버전으로 업데이트하세요.`); }
   for (let v = have; v < SCHEMA_VERSION; v++) {
     db.exec("BEGIN");
     try { db.exec(MIGRATIONS[v]); db.exec(`PRAGMA user_version=${v + 1}`); db.exec("COMMIT"); }
