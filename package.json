@@ -1,0 +1,97 @@
+{
+  "name": "myplanner",
+  "version": "0.1.0",
+  "description": "내 일정·할 일을 AI가 함께 관리하는 앱 — 개인 구독 계정(Claude · ChatGPT · Gemini)으로 AI를 쓰고, 앱 안에서 업데이트",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "electron test/app-test.js",
+    "test:unit": "node test/unit-test.js",
+    "version:patch": "node scripts/bump-version.js patch",
+    "version:minor": "node scripts/bump-version.js minor",
+    "version:major": "node scripts/bump-version.js major",
+    "dist:mac": "electron-builder --mac",
+    "dist:win": "electron-builder --win nsis zip --x64",
+    "dist": "electron-builder --mac --win"
+  },
+  "keywords": [],
+  "author": "KR ICT",
+  "license": "UNLICENSED",
+  "type": "commonjs",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/JinyoungPark/MyPlanner.git"
+  },
+  "devDependencies": {
+    "electron": "^45.0.0",
+    "electron-builder": "^26.18.0"
+  },
+  "dependencies": {
+    "fflate": "^0.8.3"
+  },
+  "productName": "MyPlanner",
+  "build": {
+    "appId": "kr.co.krs.myplanner",
+    "productName": "MyPlanner",
+    "asar": false,
+    "files": [
+      "src/**",
+      "ui/**",
+      "assets/icon.png",
+      "package.json",
+      "!test/**",
+      "!scripts/**",
+      "!README.md",
+      "!CHANGELOG.md",
+      "!.github/**"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.icns",
+      "category": "public.app-category.productivity",
+      "artifactName": "MyPlanner-${version}-mac-${arch}.${ext}",
+      "identity": "-",
+      "hardenedRuntime": false
+    },
+    "dmg": {
+      "title": "MyPlanner"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico",
+      "signAndEditExecutable": false,
+      "artifactName": "MyPlanner-${version}-windows-portable.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "MyPlanner",
+      "installerLanguages": [
+        "ko_KR"
+      ],
+      "language": "1042",
+      "unicode": true,
+      "artifactName": "MyPlanner-${version}-windows-setup.${ext}"
+    }
+  }
+}
